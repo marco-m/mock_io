@@ -20,9 +20,13 @@
 %%     ]}.
 
 setup() ->
-    mock_io:start_link().
+    OldGroupLeader = erlang:group_leader(),
+    Pid = mock_io:start_link(),
+    erlang:group_leader(Pid, self()),
+    {Pid, OldGroupLeader}.
 
-teardown(Pid) ->
+teardown({Pid, OldGroupLeader}) ->
+    erlang:group_leader(OldGroupLeader, self()),
     ok = mock_io:stop(Pid).
 
 %%example_capturing_stdout(_) ->
@@ -35,10 +39,12 @@ teardown(Pid) ->
 %%        ?_assertEqual(String, uut_that_reads_from_stdin()),
 %%        ?_assertEqual("", mock_io:remaining_injected())
 %%    ].
-%%
+
+%------------------------------------------------------------------------------
+
 %%uut_that_writes_to_stdout() ->
 %%    io:fwrite("~p ~p ~s~n", [1, a, "ciao"]).
-%%
+
 %%uut_that_reads_from_stdin() ->
 %%    io:get_line("").
 
@@ -60,12 +66,17 @@ mock_io_test_() ->
      fun teardown/1,
      [
          fun extract_without_uut_write_returns_empty_string/1,
-         fun can_access_what_has_been_injected/1
+         fun can_access_what_has_been_injected/1,
+         fun can_extract_what_has_been_written/1
      ]}.
 
-extract_without_uut_write_returns_empty_string(Pid) ->
+extract_without_uut_write_returns_empty_string({Pid, _}) ->
     ?_assertEqual("", mock_io:extract(Pid)).
 
-can_access_what_has_been_injected(Pid) ->
+can_access_what_has_been_injected({Pid, _}) ->
     ok = mock_io:inject(Pid, "hello"),
     ?_assertEqual("hello", mock_io:unread(Pid)).
+
+can_extract_what_has_been_written({Pid, _}) ->
+    io:fwrite("pizza"), %  <- this is the UUT
+    ?_assertEqual("pizza", mock_io:extract(Pid)).

@@ -2,6 +2,8 @@
 % Copyright (C) 2017 Marco Molteni.
 % See LICENSE.txt for license information.
 %
+% http://erlang.org/doc/apps/stdlib/io_protocol.html
+%
 -module(mock_io).
 
 -export([start_link/0, stop/1]).
@@ -9,7 +11,7 @@
 
 -spec start_link() -> pid().
 start_link() ->
-    spawn_link(fun() -> loop({[], []}) end).
+    spawn_link(fun init/0).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
@@ -33,15 +35,14 @@ unread(Pid) ->
 
 %------------------------------------------------------------------------------
 
-call(Pid, MsgOut) ->
-    Pid ! {self(), MsgOut},
-    receive
-        {Pid, MsgIn} -> MsgIn
-    after 1000 -> erlang:error(timeout)
-    end.
+init() ->
+    loop({[], []}).
 
 loop({Input, Output}) ->
     receive
+
+    % Mock protocol
+
         {From, {inject, String}} ->
             From ! {self(), injected},
             loop({[String | Input], Output});
@@ -49,11 +50,28 @@ loop({Input, Output}) ->
             From ! {self(), {unread, lists:flatten(lists:reverse(Input))}},
             loop({Input, Output});
         {From, extract} ->
-            From ! {self(), {extracted, ""}},
+            From ! {self(), {extracted, lists:flatten(lists:reverse(Output))}},
             loop({Input, Output});
         {From, stop} ->
             From ! {self(), stopped};
+
+    % I/O protocol
+
+        {io_request, From, Opaque,
+         {put_chars, unicode, io_lib, format, [Format, Data]}} ->
+            reply(io_reply, From, Opaque, ok),
+            loop({Input, [io_lib:format(Format, Data) | Output]});
+
         Any ->
             erlang:error({unexpected, Any})
     end.
 
+reply(Type, To, Opaque, Reply) ->
+    To ! {Type, Opaque, Reply}.
+
+call(Pid, MsgOut) ->
+    Pid ! {self(), MsgOut},
+    receive
+        {Pid, MsgIn} -> MsgIn
+    after 1000 -> erlang:error(timeout)
+    end.
