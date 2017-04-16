@@ -60,7 +60,7 @@ loop({Input, Output}) ->
         {io_request, From, Opaque,
          {put_chars, unicode, io_lib, format, [Format, Data]}} ->
             reply(io_reply, From, Opaque, ok),
-            loop({Input, Output ++ io_lib:format(Format, Data)});
+            loop({Input, Output ++ lists:flatten(io_lib:format(Format, Data))});
 
         {io_request, From, Opaque,
          {get_line, unicode, _Prompt}} ->

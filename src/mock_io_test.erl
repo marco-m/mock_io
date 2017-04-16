@@ -10,15 +10,6 @@
 % Usage examples.
 %------------------------------------------------------------------------------
 
-%%mock_io_usage_examples_test_() ->
-%%    {foreach,
-%%     fun setup/0,
-%%     fun teardown/1,
-%%     [
-%%         fun example_capturing_stdout/1,
-%%         fun example_injecting_to_stdin/1
-%%     ]}.
-
 setup() ->
     GL = erlang:group_leader(),
     Pid = mock_io:start_link(),
@@ -29,10 +20,15 @@ teardown({Pid, GL}) ->
     true = erlang:group_leader(GL, self()),
     ok = mock_io:stop(Pid).
 
-%%example_capturing_stdout(_) ->
-%%    uut_that_writes_to_stdout(),
-%%    ?_assertEqual("1 a ciao\n", mock_io:extract()).
-%%
+example_capturing_stdout_test() ->
+    {Pid, GL} = setup(),
+    uut_that_writes_to_stdout(),
+    ?assertEqual("1 a ciao\n", mock_io:extract(Pid)),
+    teardown({Pid, GL}).
+
+uut_that_writes_to_stdout() ->
+    io:fwrite("~p ~p ~s~n", [1, a, "ciao"]).
+
 %%example_injecting_to_stdin(_) ->
 %%    String = "pizza pazza puzza\n",
 %%    mock_io:inject(String), [
@@ -42,8 +38,6 @@ teardown({Pid, GL}) ->
 
 %------------------------------------------------------------------------------
 
-%%uut_that_writes_to_stdout() ->
-%%    io:fwrite("~p ~p ~s~n", [1, a, "ciao"]).
 
 %%uut_that_reads_from_stdin() ->
 %%    io:get_line("").
@@ -72,7 +66,8 @@ mock_io_group_leader_in_setup_works_test_() ->
      [
          fun extract_without_uut_write_returns_empty_string/1,
          fun can_access_what_has_been_injected/1,
-         fun mock_can_extract_what_uut_has_written/1
+         fun mock_can_extract_what_uut_has_written_simple/1,
+         fun mock_can_extract_what_uut_has_written_multi_args/1
      ]}.
 
 extract_without_uut_write_returns_empty_string({Pid, _}) ->
@@ -82,9 +77,14 @@ can_access_what_has_been_injected({Pid, _}) ->
     ok = mock_io:inject(Pid, "hello"),
     ?_assertEqual("hello", mock_io:unread(Pid)).
 
-mock_can_extract_what_uut_has_written({Pid, _}) ->
+mock_can_extract_what_uut_has_written_simple({Pid, _}) ->
     io:fwrite("pizza"), %  <- this is the UUT
     ?_assertEqual("pizza", mock_io:extract(Pid)).
+
+mock_can_extract_what_uut_has_written_multi_args({Pid, _}) ->
+    io:fwrite("~p ~p ~s~n", [1, a, "ciao"]),  %  <- this is the UUT
+    ?_assertEqual("1 a ciao\n", mock_io:extract(Pid)).
+
 
 %------------------------------------------------------------------------------
 
