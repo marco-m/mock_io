@@ -29,18 +29,16 @@ example_capturing_stdout_test() ->
 uut_that_writes_to_stdout() ->
     io:fwrite("~p ~p ~s~n", [1, a, "ciao"]).
 
-%%example_injecting_to_stdin(_) ->
-%%    String = "pizza pazza puzza\n",
-%%    mock_io:inject(String), [
-%%        ?_assertEqual(String, uut_that_reads_from_stdin()),
-%%        ?_assertEqual("", mock_io:remaining_injected())
-%%    ].
+example_injecting_to_stdin_test() ->
+    {Pid, GL} = setup(),
+    String = "pizza pazza puzza\n",
+    mock_io:inject(Pid, String),
+    ?assertEqual(String, uut_that_reads_from_stdin()),
+    ?assertEqual("", mock_io:unread(Pid)),
+    teardown({Pid, GL}).
 
-%------------------------------------------------------------------------------
-
-
-%%uut_that_reads_from_stdin() ->
-%%    io:get_line("").
+uut_that_reads_from_stdin() ->
+    io:get_line("prompt").
 
 %------------------------------------------------------------------------------
 % The real tests.
@@ -103,16 +101,21 @@ mock_can_extract_what_uut_has_written_multi_args({Pid, _}) ->
 
 uut_get_line_reads_what_mock_has_injected_test() ->
     {Pid, GL} = setup(),
-
     ok = mock_io:inject(Pid, "margherita\n"),
     ?assertEqual("margherita\n", io:get_line("prompt")), % <- This is the UUT
-
     teardown({Pid, GL}).
 
 uut_fread_reads_what_mock_has_injected_test() ->
     {Pid, GL} = setup(),
-
     ok = mock_io:inject(Pid, "margherita"),
     ?assertEqual({ok, ["margherita"]}, io:fread("prompt", "~s")), % <- This is the UUT
-
     teardown({Pid, GL}).
+
+uut_get_line_reads_with_spaces_test() ->
+    {Pid, GL} = setup(),
+    String = "pizza pazza puzza\n",
+    ok = mock_io:inject(Pid, String),
+    ?assertEqual(String,     io:get_line("prompt")),
+    ?assertEqual("", mock_io:unread(Pid)),
+    teardown({Pid, GL}).
+

@@ -64,7 +64,10 @@ loop({Input, Output}) ->
 
         {io_request, From, Opaque,
          {get_line, unicode, _Prompt}} ->
-            {ok, [Data], RestInput} = io_lib:fread("~s\n", Input),
+            % We are emulating io:get_line(), which reads until newline and returns
+            % that newline. We cannot use io_lib:fread(), because it has no notion
+            % of newline.
+            [Data, RestInput] = re:split(Input, "\n", [{return, list}]),
             reply(io_reply, From, Opaque, Data ++ "\n"),
             loop({RestInput, Output});
 
