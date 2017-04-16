@@ -45,12 +45,12 @@ loop({Input, Output}) ->
 
         {From, {inject, String}} ->
             From ! {self(), injected},
-            loop({[String | Input], Output});
+            loop({Input ++ String, Output});
         {From, unread} ->
-            From ! {self(), {unread, lists:flatten(lists:reverse(Input))}},
+            From ! {self(), {unread, Input}},
             loop({Input, Output});
         {From, extract} ->
-            From ! {self(), {extracted, lists:flatten(lists:reverse(Output))}},
+            From ! {self(), {extracted, Output}},
             loop({Input, Output});
         {From, stop} ->
             From ! {self(), stopped};
@@ -60,7 +60,19 @@ loop({Input, Output}) ->
         {io_request, From, Opaque,
          {put_chars, unicode, io_lib, format, [Format, Data]}} ->
             reply(io_reply, From, Opaque, ok),
-            loop({Input, [io_lib:format(Format, Data) | Output]});
+            loop({Input, Output ++ io_lib:format(Format, Data)});
+
+        {io_request, From, Opaque,
+         {get_line, unicode, _Prompt}} ->
+            {ok, [Data], RestInput} = io_lib:fread("~s\n", Input),
+            reply(io_reply, From, Opaque, Data ++ "\n"),
+            loop({RestInput, Output});
+
+        {io_request, From, Opaque,
+         {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
+            {ok, Data, RestInput} = io_lib:fread(Format, Input),
+            reply(io_reply, From, Opaque, {ok, Data}),
+            loop({RestInput, Output});
 
         Any ->
             erlang:error({unexpected, Any})
