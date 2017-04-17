@@ -67,8 +67,16 @@ loop({Input, Output}) ->
             % We are emulating io:get_line(), which reads until newline and returns
             % that newline. We cannot use io_lib:fread(), because it has no notion
             % of newline.
-            [Data, RestInput] = re:split(Input, "\n", [{return, list}]),
-            reply(io_reply, From, Opaque, Data ++ "\n"),
+            {Reply, RestInput} =
+                case Input of
+                    "" ->
+                        {eof, ""};
+                    Input ->
+                        Options = [{return, list}, {parts, 2}],
+                        [Data, Leftover] = re:split(Input, "\n", Options),
+                        {Data ++ "\n", Leftover}
+                end,
+            reply(io_reply, From, Opaque, Reply),
             loop({RestInput, Output});
 
         {io_request, From, Opaque,
@@ -82,7 +90,8 @@ loop({Input, Output}) ->
     end.
 
 reply(Type, To, Opaque, Reply) ->
-    To ! {Type, Opaque, Reply}.
+    To ! {Type, Opaque, Reply},
+    ok.
 
 call(Pid, MsgOut) ->
     Pid ! {self(), MsgOut},

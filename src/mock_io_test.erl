@@ -115,7 +115,21 @@ uut_get_line_reads_with_spaces_test() ->
     {Pid, GL} = setup(),
     String = "pizza pazza puzza\n",
     ok = mock_io:inject(Pid, String),
-    ?assertEqual(String,     io:get_line("prompt")),
+    ?assertEqual(String, io:get_line("prompt")),
     ?assertEqual("", mock_io:unread(Pid)),
     teardown({Pid, GL}).
 
+uut_get_line_reads_with_newlines_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "pizza pazza\npuzza pezza\n"),
+    ?assertEqual("pizza pazza\n", io:get_line("prompt")),
+    ?assertEqual("puzza pezza\n", io:get_line("prompt")),
+    ?assertEqual("", mock_io:unread(Pid)),
+    teardown({Pid, GL}).
+
+uut_get_line_gets_eof_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "pizza pazza\n"),
+    ?assertEqual("pizza pazza\n", io:get_line("prompt")),
+    ?assertEqual(eof, io:get_line("prompt")),
+    teardown({Pid, GL}).
