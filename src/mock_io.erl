@@ -82,7 +82,12 @@ loop({Input, Output}) ->
         {io_request, From, Opaque,
          {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
             {ok, Data, RestInput} = io_lib:fread(Format, Input),
-            reply(io_reply, From, Opaque, {ok, Data}),
+            Reply =
+                case Data of
+                [[]] -> eof;
+                Data -> {ok, Data}
+            end,
+            reply(io_reply, From, Opaque, Reply),
             loop({RestInput, Output});
 
         Any ->
