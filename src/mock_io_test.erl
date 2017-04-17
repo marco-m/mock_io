@@ -167,3 +167,11 @@ uut_fread_gets_error_when_too_many_args_test() ->
     ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
     teardown({Pid, GL}).
 
+% Verified with:
+% printf "\n" | escript _build/default/lib/mock_io/ebin/command_line.beam
+% io:fread("", "~d ~d ~d")
+uut_fread_gets_error_when_only_whitespace_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "\n"),
+    ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
+    teardown({Pid, GL}).

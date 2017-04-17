@@ -11,6 +11,14 @@
 main(_) -> main().
 
 main() ->
+    % printf "1 2\n" | escript
+    % X = io:fread("", "~d ~d ~d"),
+    % -> {error, {fread, input}}
+
+
+    % printf "\n" | escript
+    % -> {error, {fread, input}}
     X = io:fread("", "~d ~d ~d"),
+
     io:fwrite("~p~n", [X]),
     true.

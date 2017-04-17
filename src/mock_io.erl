@@ -63,8 +63,7 @@ loop({Input, Output}) ->
             reply(io_reply, From, Opaque, ok),
             loop({Input, Output ++ lists:flatten(io_lib:format(Format, Data))});
 
-        {io_request, From, Opaque,
-         {get_line, unicode, _Prompt}} ->
+        {io_request, From, Opaque, {get_line, unicode, _Prompt}} ->
             % We are emulating io:get_line(), which reads until newline and returns
             % that newline. We cannot use io_lib:fread(), because it has no notion
             % of newline.
@@ -84,14 +83,16 @@ loop({Input, Output}) ->
          {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
             {Reply, RestInput} =
                 case io_lib:fread(Format, Input) of
-                {more, _RestFormat, _Nchars, _InputStack} ->
-                    {{error, {fread, input}}, ""};
-                {ok, Data, Rest} ->
-                    case Data of
-                        [[]] -> {eof, ""};
-                        Data -> {{ok, Data}, Rest}
-                    end
-            end,
+                    {more, _RestFormat, _Nchars, InputStack} ->
+                        {{error, {fread, input}}, InputStack};
+                    {error, _Reason} ->
+                        {{error, {fread, input}}, Input};
+                    {ok, Data, Rest} ->
+                        case Data of
+                            [[]] -> {eof, ""};
+                            Data -> {{ok, Data}, Rest}
+                        end
+                end,
             reply(io_reply, From, Opaque, Reply),
             loop({RestInput, Output});
 
