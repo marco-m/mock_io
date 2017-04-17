@@ -18,7 +18,12 @@ main() ->
 
     % printf "\n" | escript
     % -> {error, {fread, input}}
+    %X = io:fread("", "~d ~d ~d"),
+
+    % printf "2 2 8\n" | escript
+    io:fread("", "~d ~d ~d"),      % <- no need to read \n explicitly
     X = io:fread("", "~d ~d ~d"),
+    % -> eof
 
     io:fwrite("~p~n", [X]),
     true.

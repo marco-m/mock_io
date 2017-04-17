@@ -161,7 +161,7 @@ uut_fread_gets_eof_test() ->
 % Verified with:
 % printf "1 2\n" | escript _build/default/lib/mock_io/ebin/command_line.beam
 % io:fread("", "~d ~d ~d")
-uut_fread_gets_error_when_too_many_args_test() ->
+uut_fread_gets_error_when_too_many_args_and_newline_test() ->
     {Pid, GL} = setup(),
     ok = mock_io:inject(Pid, "1 2\n"),
     ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
@@ -170,8 +170,20 @@ uut_fread_gets_error_when_too_many_args_test() ->
 % Verified with:
 % printf "\n" | escript _build/default/lib/mock_io/ebin/command_line.beam
 % io:fread("", "~d ~d ~d")
-uut_fread_gets_error_when_only_whitespace_test() ->
+uut_fread_gets_error_when_only_newline_test() ->
     {Pid, GL} = setup(),
     ok = mock_io:inject(Pid, "\n"),
     ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
     teardown({Pid, GL}).
+
+% Verified with
+% printf "2 2 8\n" | escript
+% io:fread("", "~d ~d ~d"),      % <- 1st, no need to read \n explicitly
+% X = io:fread("", "~d ~d ~d"),  % <- 2nd, no need to read \n explicitly
+uut_fread_consumes_newline_implicitly_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "2 2 8\n"),
+    ?assertEqual({ok, [2, 2, 8]}, io:fread("", "~d ~d ~d")),
+    ?assertEqual(eof, io:fread("", "~d ~d ~d")),
+    teardown({Pid, GL}).
+

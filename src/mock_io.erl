@@ -82,15 +82,23 @@ loop({Input, Output}) ->
         {io_request, From, Opaque,
          {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
             {Reply, RestInput} =
-                case io_lib:fread(Format, Input) of
-                    {more, _RestFormat, _Nchars, InputStack} ->
-                        {{error, {fread, input}}, InputStack};
-                    {error, _Reason} ->
-                        {{error, {fread, input}}, Input};
-                    {ok, Data, Rest} ->
-                        case Data of
-                            [[]] -> {eof, ""};
-                            Data -> {{ok, Data}, Rest}
+                case Input of
+                    "" -> {eof, ""};
+                    Input ->
+                        case io_lib:fread(Format, Input) of
+                            {more, _RestFormat, _Nchars, InputStack} ->
+                                {{error, {fread, input}}, InputStack};
+                            {error, _Reason} ->
+                                {{error, {fread, input}}, Input};
+                            {ok, Data, Rest} ->
+                                case Data of
+                                    %[[]] -> {eof, ""};
+                                    Data ->
+                                        case Rest of
+                                            "\n" -> {{ok, Data}, ""};
+                                            Rest -> {{ok, Data}, Rest}
+                                        end
+                                end
                         end
                 end,
             reply(io_reply, From, Opaque, Reply),
