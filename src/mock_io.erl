@@ -33,6 +33,7 @@ unread(Pid) ->
     {unread, String} = call(Pid, unread),
     String.
 
+
 %------------------------------------------------------------------------------
 
 init() ->
@@ -81,11 +82,15 @@ loop({Input, Output}) ->
 
         {io_request, From, Opaque,
          {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
-            {ok, Data, RestInput} = io_lib:fread(Format, Input),
-            Reply =
-                case Data of
-                [[]] -> eof;
-                Data -> {ok, Data}
+            {Reply, RestInput} =
+                case io_lib:fread(Format, Input) of
+                {more, _RestFormat, _Nchars, _InputStack} ->
+                    {{error, {fread, input}}, ""};
+                {ok, Data, Rest} ->
+                    case Data of
+                        [[]] -> {eof, ""};
+                        Data -> {{ok, Data}, Rest}
+                    end
             end,
             reply(io_reply, From, Opaque, Reply),
             loop({RestInput, Output});

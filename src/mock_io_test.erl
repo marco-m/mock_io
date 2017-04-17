@@ -157,3 +157,13 @@ uut_fread_gets_eof_test() ->
     ?assertEqual({ok, ["pizza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual(eof, io:fread("prompt", "~s")), % <- This is the UUT
     teardown({Pid, GL}).
+
+% Verified with:
+% printf "1 2\n" | escript _build/default/lib/mock_io/ebin/command_line.beam
+% io:fread("", "~d ~d ~d")
+uut_fread_gets_error_when_too_many_args_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "1 2\n"),
+    ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
+    teardown({Pid, GL}).
+
