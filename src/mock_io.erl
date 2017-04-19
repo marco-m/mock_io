@@ -8,6 +8,7 @@
 
 -export([start_link/0, stop/1]).
 -export([inject/2, extract/1, unread/1]).
+-export([setup/0, teardown/1]).
 
 -spec start_link() -> pid().
 start_link() ->
@@ -33,6 +34,15 @@ unread(Pid) ->
     {unread, String} = call(Pid, unread),
     String.
 
+setup() ->
+    GL = erlang:group_leader(),
+    Pid = start_link(),
+    true = erlang:group_leader(Pid, self()),
+    {Pid, GL}.
+
+teardown({Pid, GL}) ->
+    true = erlang:group_leader(GL, self()),
+    ok = stop(Pid).
 
 %------------------------------------------------------------------------------
 
