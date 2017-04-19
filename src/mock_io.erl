@@ -11,7 +11,7 @@
 
 -spec start_link() -> pid().
 start_link() ->
-    spawn_link(fun init/0).
+    spawn_link(fun loop/0).
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
@@ -36,23 +36,22 @@ unread(Pid) ->
 
 %------------------------------------------------------------------------------
 
-init() ->
-    loop({[], []}).
+loop() -> loop([], [], list).
 
-loop({Input, Output}) ->
+loop(Input, Output, Mode) ->
     receive
 
     % Mock protocol
 
         {From, {inject, String}} ->
             From ! {self(), injected},
-            loop({Input ++ String, Output});
+            loop(Input ++ String, Output, Mode);
         {From, unread} ->
             From ! {self(), {unread, Input}},
-            loop({Input, Output});
+            loop(Input, Output, Mode);
         {From, extract} ->
             From ! {self(), {extracted, Output}},
-            loop({Input, Output});
+            loop(Input, Output, Mode);
         {From, stop} ->
             From ! {self(), stopped};
 
@@ -61,7 +60,7 @@ loop({Input, Output}) ->
         {io_request, From, Opaque,
          {put_chars, unicode, io_lib, format, [Format, Data]}} ->
             reply(io_reply, From, Opaque, ok),
-            loop({Input, Output ++ lists:flatten(io_lib:format(Format, Data))});
+            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
 
         {io_request, From, Opaque, {get_line, unicode, _Prompt}} ->
             % We are emulating io:get_line(), which reads until newline and returns
@@ -77,7 +76,7 @@ loop({Input, Output}) ->
                         {Data ++ "\n", Leftover}
                 end,
             reply(io_reply, From, Opaque, Reply),
-            loop({RestInput, Output});
+            loop(RestInput, Output, Mode);
 
         {io_request, From, Opaque,
          {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
@@ -91,18 +90,39 @@ loop({Input, Output}) ->
                             {error, _Reason} ->
                                 {{error, {fread, input}}, Input};
                             {ok, Data, Rest} ->
-                                case Data of
-                                    %[[]] -> {eof, ""};
-                                    Data ->
-                                        case Rest of
-                                            "\n" -> {{ok, Data}, ""};
-                                            Rest -> {{ok, Data}, Rest}
-                                        end
+                                case Rest of
+                                    "\n" -> {{ok, Data}, ""};
+                                    Rest -> {{ok, Data}, Rest}
                                 end
                         end
                 end,
             reply(io_reply, From, Opaque, Reply),
-            loop({RestInput, Output});
+            loop(RestInput, Output, Mode);
+
+    % Handle file:read/2, which still uses the old get_chars format
+        {io_request, From, Opaque, {get_chars, _Prompt, N}} ->
+            {Reply, RestInput} =
+                case Input of
+                    "" -> {eof, ""};
+                    Input ->
+                        {Data, Rest} =
+                        % TODO instead of length + split, write our own split that
+                        % doesn't error if N > length!
+                            case length(Input) > N of
+                                true -> lists:split(N, Input);
+                                false -> {Input, ""}
+                            end,
+                        case Mode of
+                            binary -> {{ok, list_to_binary(Data)}, Rest};
+                            list -> {{ok, Data}, Rest}
+                        end
+                end,
+            reply(io_reply, From, Opaque, Reply),
+            loop(RestInput, Output, Mode);
+
+        {io_request, From, Opaque, {setopts, [binary]}} ->
+            reply(io_reply, From, Opaque, ok),
+            loop(Input, Output, binary);
 
         Any ->
             erlang:error({unexpected, Any})

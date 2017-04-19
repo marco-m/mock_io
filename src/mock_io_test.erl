@@ -187,3 +187,11 @@ uut_fread_consumes_newline_implicitly_test() ->
     ?assertEqual(eof, io:fread("", "~d ~d ~d")),
     teardown({Pid, GL}).
 
+mock_supports_setopt_binary_test() ->
+    {Pid, GL} = setup(),
+    ok = mock_io:inject(Pid, "ciao"),
+    ?assertEqual(ok, io:setopts(standard_io, [binary])),
+    {ok, Data} = file:read(standard_io, 10000),
+    ?assertEqual(eof, file:read(standard_io, 10000)),
+    ?assertEqual(<<"ciao">>, Data),
+    teardown({Pid, GL}).
