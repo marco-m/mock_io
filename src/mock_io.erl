@@ -72,7 +72,7 @@ loop(Input, Output, Mode) ->
             reply(io_reply, From, Opaque, ok),
             loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
 
-        {io_request, From, Opaque, {get_line, unicode, _Prompt}} ->
+        {io_request, From, Opaque, {get_line, unicode, Prompt}} ->
             % We are emulating io:get_line(), which reads until newline and returns
             % that newline. We cannot use io_lib:fread(), because it has no notion
             % of newline.
@@ -86,10 +86,10 @@ loop(Input, Output, Mode) ->
                         {Data ++ "\n", Leftover}
                 end,
             reply(io_reply, From, Opaque, Reply),
-            loop(RestInput, Output, Mode);
+            loop(RestInput, Output ++ Prompt, Mode);
 
         {io_request, From, Opaque,
-         {get_until, unicode, _Prompt, io_lib, fread, [Format]}} ->
+         {get_until, unicode, Prompt, io_lib, fread, [Format]}} ->
             {Reply, RestInput} =
                 case Input of
                     "" -> {eof, ""};
@@ -107,7 +107,7 @@ loop(Input, Output, Mode) ->
                         end
                 end,
             reply(io_reply, From, Opaque, Reply),
-            loop(RestInput, Output, Mode);
+            loop(RestInput, Output ++ Prompt, Mode);
 
     % Handle file:read/2, which still uses the old get_chars format
         {io_request, From, Opaque, {get_chars, _Prompt, N}} ->

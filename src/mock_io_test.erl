@@ -185,3 +185,19 @@ mock_supports_setopt_binary_test() ->
     ?assertEqual(eof, file:read(standard_io, 10000)),
     ?assertEqual(<<"ciao">>, Data),
     mock_io:teardown({IO, GL}).
+
+prompt_of_fread_gets_copied_to_mock_output_channel_test() ->
+    {IO, GL} = mock_io:setup(),
+    % feed something to the UUT simply to make it return.
+    mock_io:inject(IO, "\n"),
+    {ok, _} = io:fread("I am the prompt", "~s"),
+    ?assertEqual("I am the prompt", mock_io:extract(IO)),
+    mock_io:teardown({IO, GL}).
+
+prompt_of_get_line_gets_copied_to_mock_output_channel_test() ->
+    {IO, GL} = mock_io:setup(),
+    % feed something to the UUT simply to make it return.
+    mock_io:inject(IO, "\n"),
+    "\n" = io:get_line("I am the prompt"),
+    ?assertEqual("I am the prompt", mock_io:extract(IO)),
+    mock_io:teardown({IO, GL}).
