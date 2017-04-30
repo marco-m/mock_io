@@ -96,75 +96,37 @@ handle_mock_protocol(From, Args, {Input, Output, Mode}) ->
             stop
     end.
 
-handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
+handle_io_protocol(From, Opaque, Req, {Input, Output, Mode}) ->
     %%        {io_request, From, Opaque,
     %%         {put_chars,latin1, Bin}} when is_binary(Bin) ->
     %%            reply(io_reply, From, Opaque, ok),
     %%            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
 
-    case Args of
+    case Req of
 
-        {put_chars, unicode, io_lib, format, [Format, Data]} ->
-            io_reply(From, Opaque, ok),
-            {Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode};
-
-        {get_line, unicode, Prompt} ->
-            % We are emulating io:get_line(), which reads until newline and returns
-            % that newline. We cannot use io_lib:fread(), because it has no notion
-            % of newline.
-            {Reply, RestInput} =
-                case Input of
-                    "" ->
-                        {eof, ""};
-                    Input ->
-                        Options = [{return, list}, {parts, 2}],
-                        [Data, Leftover] = re:split(Input, "\n", Options),
-                        {Data ++ "\n", Leftover}
-                end,
+        {put_chars, Encoding, Mod, Fun, Args} ->
+            {Reply, Output2} =
+                io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, Mode}),
             io_reply(From, Opaque, Reply),
-            {RestInput, Output ++ Prompt, Mode};
+            {Input, Output2, Mode};
 
-        {get_until, unicode, Prompt, io_lib, fread, [Format]} ->
-            {Reply, RestInput} =
-                case Input of
-                    "" -> {eof, ""};
-                    Input ->
-                        case io_lib:fread(Format, Input) of
-                            {more, _RestFormat, _Nchars, InputStack} ->
-                                {{error, {fread, input}}, InputStack};
-                            {error, _Reason} ->
-                                {{error, {fread, input}}, Input};
-                            {ok, Data, Rest} ->
-                                case Rest of
-                                    "\n" -> {{ok, Data}, ""};
-                                    Rest -> {{ok, Data}, Rest}
-                                end
-                        end
-                end,
+        {get_line, Encoding, Prompt} ->
+            {Reply, Input2, Output2} =
+                io_handle_get_line(Encoding, Prompt, {Input, Output, Mode}),
             io_reply(From, Opaque, Reply),
-            {RestInput, Output ++ Prompt, Mode};
+            {Input2, Output2, Mode};
 
-        % Handle file:read/2, which still uses the old get_chars format
-        {get_chars, _Prompt, N} ->
-            {Reply, RestInput} =
-                case Input of
-                    "" -> {eof, ""};
-                    Input ->
-                        {Data, Rest} =
-                            % TODO instead of length + split, write our own split that
-                            % doesn't error if N > length!
-                            case length(Input) > N of
-                                true -> lists:split(N, Input);
-                                false ->
-                                    {Input, ""}
-                            end,
-                        case Mode of
-                            binary -> {{ok, list_to_binary(Data)}, Rest};
-                            list -> {{ok, Data}, Rest}
-                        end
-                end,
+        {get_until, Encoding, Prompt, Mod, Fun, Args} ->
+            {Reply, Input2, Output2} =
+                io_handle_get_until(Encoding, Prompt, Mod, Fun, Args,
+                                    {Input, Output, Mode}),
             io_reply(From, Opaque, Reply),
-            {RestInput, Output, Mode};
+            {Input2, Output2, Mode};
+
+        {get_chars, Prompt, NChars} ->
+            {Reply, Input2} = io_handle_get_chars(Prompt, NChars, {Input, Mode}),
+            io_reply(From, Opaque, Reply),
+            {Input2, Output, Mode};
 
         % By default, all I/O devices in OTP are set in `list` mode.
         % If set in binary mode (`binary` or `{binary, true}`), the I/O server sends
@@ -177,6 +139,66 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
         Any ->
             erlang:error({unexpected, Any})
     end.
+
+io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, _Mode}) ->
+    case {Encoding, Mod, Fun, Args} of
+        {unicode, io_lib, format, [Format, Data]} ->
+            {ok, Output ++ lists:flatten(io_lib:format(Format, Data))}
+    end.
+
+io_handle_get_line(_Encoding, Prompt, {Input, Output, _Mode}) ->
+    % We are emulating io:get_line(), which reads until newline and returns
+    % that newline. We cannot use io_lib:fread(), because it has no notion
+    % of newline.
+    {Reply, RestInput} =
+        case Input of
+            "" -> {eof, ""};
+            Input ->
+                Options = [{return, list}, {parts, 2}],
+                [Data, Leftover] = re:split(Input, "\n", Options),
+                {Data ++ "\n", Leftover}
+        end,
+    {Reply, RestInput, Output ++ Prompt}.
+
+io_handle_get_until(_Encoding, Prompt, _Mod = io_lib, _Fun = fread, _Args = [Format],
+                    {Input, Output, _Mode}) ->
+    {Reply, RestInput} =
+        case Input of
+            "" -> {eof, ""};
+            Input ->
+                case io_lib:fread(Format, Input) of
+                    {more, _RestFormat, _Nchars, InputStack} ->
+                        {{error, {fread, input}}, InputStack};
+                    {error, _Reason} ->
+                        {{error, {fread, input}}, Input};
+                    {ok, Data, Rest} ->
+                        case Rest of
+                            "\n" -> {{ok, Data}, ""};
+                            Rest -> {{ok, Data}, Rest}
+                        end
+                end
+        end,
+    {Reply, RestInput, Output ++ Prompt}.
+
+% Handle file:read/2, which still uses the old get_chars format
+io_handle_get_chars(_Prompt, NChars, {Input, Mode}) ->
+    {Reply, RestInput} =
+        case Input of
+            "" -> {eof, ""};
+            Input ->
+                {Data, Rest} =
+                    % TODO instead of length + split, write our own split that
+                    % doesn't error if N > length!
+                    case length(Input) > NChars of
+                        true -> lists:split(NChars, Input);
+                        false -> {Input, ""}
+                    end,
+                case Mode of
+                    binary -> {{ok, list_to_binary(Data)}, Rest};
+                    list -> {{ok, Data}, Rest}
+                end
+        end,
+    {Reply, RestInput}.
 
 io_reply(To, Opaque, Reply) ->
     To ! {io_reply, Opaque, Reply},

@@ -227,3 +227,9 @@ prompt_of_get_line_gets_copied_to_mock_output_channel_test() ->
 %%    ok = file:write(standard_io, [<<"foo3">>, <<"bar">>, <<"baz">>]),
 %%    ?assertEqual(<<"foo3barbaz">>, mock_io:extract(IO)),
 %%    mock_io:teardown({IO, GL}).
+
+
+% also get_chars should handle Prompt correctly, although it is bizarre because
+% obviously file_read() doesn't support Prompt...
+% Handle file:read/2, which still uses the old get_chars format
+%io_handle_get_chars(_Prompt, NChars, {Input, Mode}) ->
