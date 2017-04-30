@@ -24,7 +24,7 @@ example_injecting_to_stdin_test() ->
     String = "pizza pazza puzza\n",
     mock_io:inject(IO, String),
     ?assertEqual(String, uut_that_reads_from_stdin()),
-    ?assertEqual("", mock_io:unread(IO)),
+    ?assertEqual("", mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_that_reads_from_stdin() ->
@@ -63,7 +63,7 @@ extract_without_uut_write_returns_empty_string({IO, _}) ->
 
 can_access_what_has_been_injected({IO, _}) ->
     ok = mock_io:inject(IO, "hello"),
-    ?_assertEqual("hello", mock_io:unread(IO)).
+    ?_assertEqual("hello", mock_io:remaining_input(IO)).
 
 mock_can_extract_what_uut_has_written_simple({IO, _}) ->
     io:fwrite("pizza"), %  <- this is the UUT
@@ -106,7 +106,7 @@ uut_get_line_reads_with_spaces_test() ->
     String = "pizza pazza puzza\n",
     ok = mock_io:inject(IO, String),
     ?assertEqual(String, io:get_line("prompt")),
-    ?assertEqual("", mock_io:unread(IO)),
+    ?assertEqual("", mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_fread_reads_with_spaces_test() ->
@@ -123,7 +123,7 @@ uut_get_line_reads_with_newlines_test() ->
     ok = mock_io:inject(IO, "pizza pazza\npuzza pezza\n"),
     ?assertEqual("pizza pazza\n", io:get_line("prompt")),
     ?assertEqual("puzza pezza\n", io:get_line("prompt")),
-    ?assertEqual("", mock_io:unread(IO)),
+    ?assertEqual("", mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_freads_reads_with_newlines_test() ->
@@ -201,3 +201,29 @@ prompt_of_get_line_gets_copied_to_mock_output_channel_test() ->
     "\n" = io:get_line("I am the prompt"),
     ?assertEqual("I am the prompt", mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
+
+%%one_file_write_of_binary_then_binary_read_test() ->
+%%    {IO, GL} = mock_io:setup(),
+%%    ok = file:write(standard_io, <<"foo1">>),
+%%    ?assertEqual(<<"foo1">>, mock_io:extract(IO)),
+%%    mock_io:teardown({IO, GL}).
+
+%one_file_write_of_binary_then_string_read_test() ->
+
+%mix_of_binary_and_string_writes_then_binary_read_test() ->
+
+%mix_of_binary_and_string_writes_then_string_read_test() ->
+
+%%mock_supports_multiple_file_write_of_binary_test() ->
+%%    {IO, GL} = mock_io:setup(),
+%%    ok = file:write(standard_io, <<"foo2">>),
+%%    ok = file:write(standard_io, <<"bar">>),
+%%    ok = file:write(standard_io, <<"baz">>),
+%%    ?assertEqual(<<"foo2barbaz">>, mock_io:extract(IO)),
+%%    mock_io:teardown({IO, GL}).
+%%
+%%mock_supports_io_list_test() ->
+%%    {IO, GL} = mock_io:setup(),
+%%    ok = file:write(standard_io, [<<"foo3">>, <<"bar">>, <<"baz">>]),
+%%    ?assertEqual(<<"foo3barbaz">>, mock_io:extract(IO)),
+%%    mock_io:teardown({IO, GL}).

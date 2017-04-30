@@ -6,9 +6,37 @@
 %
 -module(mock_io).
 
+% The mock_io API.
+-export([inject/2, extract/1, remaining_input/1]).
+
+% Process-lifetime API.
 -export([start_link/0, stop/1]).
--export([inject/2, extract/1, unread/1]).
+
+% Helper functions for unit tests.
 -export([setup/0, teardown/1]).
+
+%------------------------------------------------------------------------------
+% Mock IO API
+%------------------------------------------------------------------------------
+
+-spec extract(pid()) -> string().
+extract(Pid) ->
+    {extracted, String} = mock_call(Pid, extract),
+    String.
+
+-spec inject(pid(), string()) -> ok.
+inject(Pid, String) ->
+    injected = mock_call(Pid, {inject, String}),
+    ok.
+
+-spec remaining_input(pid()) -> string().
+remaining_input(Pid) ->
+    {remaining_input, String} = mock_call(Pid, remaining_input),
+    String.
+
+%------------------------------------------------------------------------------
+% Process-lifetime API
+%------------------------------------------------------------------------------
 
 -spec start_link() -> pid().
 start_link() ->
@@ -16,30 +44,21 @@ start_link() ->
 
 -spec stop(pid()) -> ok.
 stop(Pid) ->
-    stopped = call(Pid, stop),
+    stopped = mock_call(Pid, stop),
     ok.
 
--spec extract(pid()) -> string().
-extract(Pid) ->
-    {extracted, String} = call(Pid, extract),
-    String.
+%------------------------------------------------------------------------------
+% Helper functions API
+%------------------------------------------------------------------------------
 
--spec inject(pid(), string()) -> ok.
-inject(Pid, String) ->
-    injected = call(Pid, {inject, String}),
-    ok.
-
--spec unread(pid()) -> string().
-unread(Pid) ->
-    {unread, String} = call(Pid, unread),
-    String.
-
+-spec setup() -> {pid(), pid()}.
 setup() ->
     GL = erlang:group_leader(),
     Pid = start_link(),
     true = erlang:group_leader(Pid, self()),
     {Pid, GL}.
 
+-spec teardown({pid(), pid()}) -> ok.
 teardown({Pid, GL}) ->
     true = erlang:group_leader(GL, self()),
     ok = stop(Pid).
@@ -50,29 +69,46 @@ loop() -> loop([], [], list).
 
 loop(Input, Output, Mode) ->
     receive
+        {mock, From, Args} ->
+            case handle_mock_protocol(From, Args, {Input, Output, Mode}) of
+                {Input2, Output2, Mode2} -> loop(Input2, Output2, Mode2);
+                stop -> stop
+            end;
+        {io_request, From, Opaque, Args} ->
+            {Input2, Output2, Mode2} =
+                handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}),
+            loop(Input2, Output2, Mode2)
+    end.
 
-    % Mock protocol
+handle_mock_protocol(From, Args, {Input, Output, Mode}) ->
+    case Args of
+        {inject, String} ->
+            From ! {mock, self(), injected},
+            {Input ++ String, Output, Mode};
+        remaining_input ->
+            From ! {mock, self(), {remaining_input, Input}},
+            {Input, Output, Mode};
+        extract ->
+            From ! {mock, self(), {extracted, Output}},
+            {Input, Output, Mode};
+        stop ->
+            From ! {mock, self(), stopped},
+            stop
+    end.
 
-        {From, {inject, String}} ->
-            From ! {self(), injected},
-            loop(Input ++ String, Output, Mode);
-        {From, unread} ->
-            From ! {self(), {unread, Input}},
-            loop(Input, Output, Mode);
-        {From, extract} ->
-            From ! {self(), {extracted, Output}},
-            loop(Input, Output, Mode);
-        {From, stop} ->
-            From ! {self(), stopped};
+handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
+    %%        {io_request, From, Opaque,
+    %%         {put_chars,latin1, Bin}} when is_binary(Bin) ->
+    %%            reply(io_reply, From, Opaque, ok),
+    %%            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
 
-    % I/O protocol
+    case Args of
 
-        {io_request, From, Opaque,
-         {put_chars, unicode, io_lib, format, [Format, Data]}} ->
-            reply(io_reply, From, Opaque, ok),
-            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
+        {put_chars, unicode, io_lib, format, [Format, Data]} ->
+            io_reply(io_reply, From, Opaque, ok),
+            {Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode};
 
-        {io_request, From, Opaque, {get_line, unicode, Prompt}} ->
+        {get_line, unicode, Prompt} ->
             % We are emulating io:get_line(), which reads until newline and returns
             % that newline. We cannot use io_lib:fread(), because it has no notion
             % of newline.
@@ -85,11 +121,10 @@ loop(Input, Output, Mode) ->
                         [Data, Leftover] = re:split(Input, "\n", Options),
                         {Data ++ "\n", Leftover}
                 end,
-            reply(io_reply, From, Opaque, Reply),
-            loop(RestInput, Output ++ Prompt, Mode);
+            io_reply(io_reply, From, Opaque, Reply),
+            {RestInput, Output ++ Prompt, Mode};
 
-        {io_request, From, Opaque,
-         {get_until, unicode, Prompt, io_lib, fread, [Format]}} ->
+         {get_until, unicode, Prompt, io_lib, fread, [Format]} ->
             {Reply, RestInput} =
                 case Input of
                     "" -> {eof, ""};
@@ -106,45 +141,50 @@ loop(Input, Output, Mode) ->
                                 end
                         end
                 end,
-            reply(io_reply, From, Opaque, Reply),
-            loop(RestInput, Output ++ Prompt, Mode);
+            io_reply(io_reply, From, Opaque, Reply),
+            {RestInput, Output ++ Prompt, Mode};
 
-    % Handle file:read/2, which still uses the old get_chars format
-        {io_request, From, Opaque, {get_chars, _Prompt, N}} ->
+        % Handle file:read/2, which still uses the old get_chars format
+        {get_chars, _Prompt, N} ->
             {Reply, RestInput} =
                 case Input of
                     "" -> {eof, ""};
                     Input ->
                         {Data, Rest} =
-                        % TODO instead of length + split, write our own split that
-                        % doesn't error if N > length!
+                            % TODO instead of length + split, write our own split that
+                            % doesn't error if N > length!
                             case length(Input) > N of
                                 true -> lists:split(N, Input);
-                                false -> {Input, ""}
+                                false ->
+                                    {Input, ""}
                             end,
                         case Mode of
                             binary -> {{ok, list_to_binary(Data)}, Rest};
                             list -> {{ok, Data}, Rest}
                         end
                 end,
-            reply(io_reply, From, Opaque, Reply),
-            loop(RestInput, Output, Mode);
+            io_reply(io_reply, From, Opaque, Reply),
+            {RestInput, Output, Mode};
 
-        {io_request, From, Opaque, {setopts, [binary]}} ->
-            reply(io_reply, From, Opaque, ok),
-            loop(Input, Output, binary);
+        % By default, all I/O devices in OTP are set in `list` mode.
+        % If set in binary mode (`binary` or `{binary, true}`), the I/O server sends
+        % binary data (encoded in UTF-8) as answers to the `get_line`, `get_chars` and
+        % `get_until` requests
+        {setopts, [binary]} ->
+            io_reply(io_reply, From, Opaque, ok),
+            {Input, Output, binary};
 
         Any ->
             erlang:error({unexpected, Any})
     end.
 
-reply(Type, To, Opaque, Reply) ->
+io_reply(Type, To, Opaque, Reply) ->
     To ! {Type, Opaque, Reply},
     ok.
 
-call(Pid, MsgOut) ->
-    Pid ! {self(), MsgOut},
+mock_call(Pid, MsgOut) ->
+    Pid ! {mock, self(), MsgOut},
     receive
-        {Pid, MsgIn} -> MsgIn
+        {mock, Pid, MsgIn} -> MsgIn
     after 1000 -> erlang:error(timeout)
     end.
