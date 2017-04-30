@@ -83,16 +83,16 @@ loop(Input, Output, Mode) ->
 handle_mock_protocol(From, Args, {Input, Output, Mode}) ->
     case Args of
         {inject, String} ->
-            From ! {mock, self(), injected},
+            mock_reply(From, injected),
             {Input ++ String, Output, Mode};
         remaining_input ->
-            From ! {mock, self(), {remaining_input, Input}},
+            mock_reply(From, {remaining_input, Input}),
             {Input, Output, Mode};
         extract ->
-            From ! {mock, self(), {extracted, Output}},
+            mock_reply(From, {extracted, Output}),
             {Input, Output, Mode};
         stop ->
-            From ! {mock, self(), stopped},
+            mock_reply(From, stopped),
             stop
     end.
 
@@ -105,7 +105,7 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
     case Args of
 
         {put_chars, unicode, io_lib, format, [Format, Data]} ->
-            io_reply(io_reply, From, Opaque, ok),
+            io_reply(From, Opaque, ok),
             {Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode};
 
         {get_line, unicode, Prompt} ->
@@ -121,10 +121,10 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
                         [Data, Leftover] = re:split(Input, "\n", Options),
                         {Data ++ "\n", Leftover}
                 end,
-            io_reply(io_reply, From, Opaque, Reply),
+            io_reply(From, Opaque, Reply),
             {RestInput, Output ++ Prompt, Mode};
 
-         {get_until, unicode, Prompt, io_lib, fread, [Format]} ->
+        {get_until, unicode, Prompt, io_lib, fread, [Format]} ->
             {Reply, RestInput} =
                 case Input of
                     "" -> {eof, ""};
@@ -141,7 +141,7 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
                                 end
                         end
                 end,
-            io_reply(io_reply, From, Opaque, Reply),
+            io_reply(From, Opaque, Reply),
             {RestInput, Output ++ Prompt, Mode};
 
         % Handle file:read/2, which still uses the old get_chars format
@@ -163,7 +163,7 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
                             list -> {{ok, Data}, Rest}
                         end
                 end,
-            io_reply(io_reply, From, Opaque, Reply),
+            io_reply(From, Opaque, Reply),
             {RestInput, Output, Mode};
 
         % By default, all I/O devices in OTP are set in `list` mode.
@@ -171,15 +171,19 @@ handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}) ->
         % binary data (encoded in UTF-8) as answers to the `get_line`, `get_chars` and
         % `get_until` requests
         {setopts, [binary]} ->
-            io_reply(io_reply, From, Opaque, ok),
+            io_reply(From, Opaque, ok),
             {Input, Output, binary};
 
         Any ->
             erlang:error({unexpected, Any})
     end.
 
-io_reply(Type, To, Opaque, Reply) ->
-    To ! {Type, Opaque, Reply},
+io_reply(To, Opaque, Reply) ->
+    To ! {io_reply, Opaque, Reply},
+    ok.
+
+mock_reply(To, Reply) ->
+    To ! {mock, self(), Reply},
     ok.
 
 mock_call(Pid, MsgOut) ->
