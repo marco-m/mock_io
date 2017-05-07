@@ -15,6 +15,10 @@
 % Helper functions for unit tests.
 -export([setup/0, teardown/1]).
 
+% Low-level test the mock itself API
+-export([getopts/1]).
+
+
 %------------------------------------------------------------------------------
 % Mock IO API
 %------------------------------------------------------------------------------
@@ -64,89 +68,104 @@ teardown({Pid, GL}) ->
     ok = stop(Pid).
 
 %------------------------------------------------------------------------------
+% Low-level test the mock itself API
+%------------------------------------------------------------------------------
 
-loop() -> loop([], [], list).
+-spec getopts(pid()) -> list().
+getopts(Pid) ->
+    {getopts, Opts} = mock_call(Pid, getopts),
+    Opts.
 
-loop(Input, Output, Mode) ->
+%------------------------------------------------------------------------------
+
+loop() -> loop([], [], false).
+
+loop(Input, Output, IsBinary) ->
     receive
         {mock, From, Args} ->
-            case handle_mock_protocol(From, Args, {Input, Output, Mode}) of
-                {Input2, Output2, Mode2} -> loop(Input2, Output2, Mode2);
+            case handle_mock_protocol(From, Args, {Input, Output, IsBinary}) of
+                {Input2, Output2, IsBinary2} -> loop(Input2, Output2, IsBinary2);
                 stop -> stop
             end;
         {io_request, From, Opaque, Args} ->
-            {Input2, Output2, Mode2} =
-                handle_io_protocol(From, Opaque, Args, {Input, Output, Mode}),
-            loop(Input2, Output2, Mode2)
+            {Input2, Output2, IsBinary2} =
+                handle_io_protocol(From, Opaque, Args, {Input, Output, IsBinary}),
+            loop(Input2, Output2, IsBinary2)
     end.
 
-handle_mock_protocol(From, Args, {Input, Output, Mode}) ->
+handle_mock_protocol(From, Args, {Input, Output, IsBinary}) ->
     case Args of
         {inject, String} ->
             mock_reply(From, injected),
-            {Input ++ String, Output, Mode};
+            {Input ++ String, Output, IsBinary};
         remaining_input ->
             mock_reply(From, {remaining_input, Input}),
-            {Input, Output, Mode};
+            {Input, Output, IsBinary};
         extract ->
             mock_reply(From, {extracted, Output}),
-            {Input, Output, Mode};
+            {Input, Output, IsBinary};
         stop ->
             mock_reply(From, stopped),
-            stop
+            stop;
+
+        getopts ->
+            mock_reply(From, {getopts, [{binary, IsBinary}]}),
+            {Input, Output, IsBinary}
+
     end.
 
-handle_io_protocol(From, Opaque, Req, {Input, Output, Mode}) ->
+handle_io_protocol(From, Opaque, Req, {Input, Output, IsBinary}) ->
     %%        {io_request, From, Opaque,
     %%         {put_chars,latin1, Bin}} when is_binary(Bin) ->
     %%            reply(io_reply, From, Opaque, ok),
-    %%            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), Mode);
+    %%            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), IsBinary);
 
     case Req of
 
         {put_chars, Encoding, Mod, Fun, Args} ->
             {Reply, Output2} =
-                io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, Mode}),
+                io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, IsBinary}),
             io_reply(From, Opaque, Reply),
-            {Input, Output2, Mode};
+            {Input, Output2, IsBinary};
 
         {get_line, Encoding, Prompt} ->
             {Reply, Input2, Output2} =
-                io_handle_get_line(Encoding, Prompt, {Input, Output, Mode}),
+                io_handle_get_line(Encoding, Prompt, {Input, Output, IsBinary}),
             io_reply(From, Opaque, Reply),
-            {Input2, Output2, Mode};
+            {Input2, Output2, IsBinary};
 
         {get_until, Encoding, Prompt, Mod, Fun, Args} ->
             {Reply, Input2, Output2} =
                 io_handle_get_until(Encoding, Prompt, Mod, Fun, Args,
-                                    {Input, Output, Mode}),
+                                    {Input, Output, IsBinary}),
             io_reply(From, Opaque, Reply),
-            {Input2, Output2, Mode};
+            {Input2, Output2, IsBinary};
 
         {get_chars, Prompt, NChars} ->
-            {Reply, Input2} = io_handle_get_chars(Prompt, NChars, {Input, Mode}),
+            {Reply, Input2} = io_handle_get_chars(Prompt, NChars, {Input, IsBinary}),
             io_reply(From, Opaque, Reply),
-            {Input2, Output, Mode};
+            {Input2, Output, IsBinary};
 
-        % By default, all I/O devices in OTP are set in `list` mode.
-        % If set in binary mode (`binary` or `{binary, true}`), the I/O server sends
-        % binary data (encoded in UTF-8) as answers to the `get_line`, `get_chars` and
-        % `get_until` requests
-        {setopts, [binary]} ->
-            io_reply(From, Opaque, ok),
-            {Input, Output, binary};
+        {setopts, Args} ->
+            {Reply, IsBinary2} = io_handle_setopts(Args, IsBinary),
+            io_reply(From, Opaque, Reply),
+            {Input, Output, IsBinary2};
+
+        getopts ->
+            io_reply(From, Opaque, [{binary, IsBinary}]),
+            {Input, Output, IsBinary};
 
         Any ->
             erlang:error({unexpected, Any})
     end.
 
-io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, _Mode}) ->
+io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, _IsBinary}) ->
     case {Encoding, Mod, Fun, Args} of
         {unicode, io_lib, format, [Format, Data]} ->
             {ok, Output ++ lists:flatten(io_lib:format(Format, Data))}
     end.
 
-io_handle_get_line(_Encoding, Prompt, {Input, Output, _Mode}) ->
+io_handle_get_line(_Encoding, Prompt, {Input, Output, _IsBinary}) ->
     % We are emulating io:get_line(), which reads until newline and returns
     % that newline. We cannot use io_lib:fread(), because it has no notion
     % of newline.
@@ -161,7 +180,7 @@ io_handle_get_line(_Encoding, Prompt, {Input, Output, _Mode}) ->
     {Reply, RestInput, Output ++ Prompt}.
 
 io_handle_get_until(_Encoding, Prompt, _Mod = io_lib, _Fun = fread, _Args = [Format],
-                    {Input, Output, _Mode}) ->
+                    {Input, Output, _IsBinary}) ->
     {Reply, RestInput} =
         case Input of
             "" -> {eof, ""};
@@ -181,7 +200,7 @@ io_handle_get_until(_Encoding, Prompt, _Mod = io_lib, _Fun = fread, _Args = [For
     {Reply, RestInput, Output ++ Prompt}.
 
 % Handle file:read/2, which still uses the old get_chars format
-io_handle_get_chars(_Prompt, NChars, {Input, Mode}) ->
+io_handle_get_chars(_Prompt, NChars, {Input, IsBinary}) ->
     {Reply, RestInput} =
         case Input of
             "" -> {eof, ""};
@@ -193,12 +212,30 @@ io_handle_get_chars(_Prompt, NChars, {Input, Mode}) ->
                         true -> lists:split(NChars, Input);
                         false -> {Input, ""}
                     end,
-                case Mode of
-                    binary -> {{ok, list_to_binary(Data)}, Rest};
-                    list -> {{ok, Data}, Rest}
+                case IsBinary of
+                    true -> {{ok, list_to_binary(Data)}, Rest};
+                    false -> {{ok, Data}, Rest}
                 end
         end,
     {Reply, RestInput}.
+
+% By default, all I/O devices in OTP are set in `list` mode.
+% If set in binary mode (`binary` or `{binary, true}`), the I/O server sends
+% binary data (encoded in UTF-8) as answers to the `get_line`, `get_chars` and
+% `get_until` requests
+io_handle_setopts(Args, IsBinary) when is_list(Args) ->
+    case Args of
+        [binary] -> {ok, true};
+        [{binary, true}] -> {ok, true};
+        [{binary, false}] -> {ok, false};
+        [list] -> {ok, false};
+        Args -> {{error, enotsup}, IsBinary}
+    end;
+io_handle_setopts(_, IsBinary) -> {{error, request}, IsBinary}.
+
+
+
+%------------------------------------------------------------------------------
 
 io_reply(To, Opaque, Reply) ->
     To ! {io_reply, Opaque, Reply},

@@ -177,15 +177,6 @@ uut_fread_consumes_newline_implicitly_test() ->
     ?assertEqual(eof, io:fread("", "~d ~d ~d")),
     mock_io:teardown({IO, GL}).
 
-mock_supports_setopt_binary_test() ->
-    {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "ciao"),
-    ?assertEqual(ok, io:setopts(standard_io, [binary])),
-    {ok, Data} = file:read(standard_io, 10000),
-    ?assertEqual(eof, file:read(standard_io, 10000)),
-    ?assertEqual(<<"ciao">>, Data),
-    mock_io:teardown({IO, GL}).
-
 prompt_of_fread_gets_copied_to_mock_output_channel_test() ->
     {IO, GL} = mock_io:setup(),
     % feed something to the UUT simply to make it return.
@@ -202,7 +193,70 @@ prompt_of_get_line_gets_copied_to_mock_output_channel_test() ->
     ?assertEqual("I am the prompt", mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
 
-%%one_file_write_of_binary_then_binary_read_test() ->
+io_setopts_returns_error_if_nonlist_existing_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({error, request}, io:setopts(binary)),
+    mock_io:teardown({IO, GL}).
+
+io_setopts_returns_error_if_nonlist_non_existing_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({error, request}, io:setopts(foo)),
+    mock_io:teardown({IO, GL}).
+
+io_setopts_returns_error_if_list_non_existing_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({error, enotsup}, io:setopts([foo])),
+    mock_io:teardown({IO, GL}).
+
+io_setopts_returns_error_if_list_mix_existing_non_existing_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({error, enotsup}, io:setopts([binary, foo])),
+    mock_io:teardown({IO, GL}).
+
+default_mode_of_mock_is_binary_false_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({binary, false}, proplists:lookup(binary, mock_io:getopts(IO))),
+    mock_io:teardown({IO, GL}).
+
+set_binary_mode_naked_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual(ok, io:setopts([binary])),
+    ?assertEqual({binary, true}, proplists:lookup(binary, mock_io:getopts(IO))),
+    mock_io:teardown({IO, GL}).
+
+set_list_mode_naked_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual(ok, io:setopts([list])),
+    ?assertEqual({binary, false}, proplists:lookup(binary, mock_io:getopts(IO))),
+    mock_io:teardown({IO, GL}).
+
+set_binary_mode_tuple_true_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual(ok, io:setopts([{binary, true}])),
+    ?assertEqual({binary, true}, proplists:lookup(binary, mock_io:getopts(IO))),
+    mock_io:teardown({IO, GL}).
+
+set_binary_mode_tuple_false_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual(ok, io:setopts([{binary, false}])),
+    ?assertEqual({binary, false}, proplists:lookup(binary, mock_io:getopts(IO))),
+    mock_io:teardown({IO, GL}).
+
+default_mode_of_mock_standard_io_is_binary_false_test() ->
+    {IO, GL} = mock_io:setup(),
+    ?assertEqual({binary, false}, proplists:lookup(binary, io:getopts())),
+    mock_io:teardown({IO, GL}).
+
+uut_setopt_binary_file_read_test() ->
+    {IO, GL} = mock_io:setup(),
+    ok = mock_io:inject(IO, "ciao"),
+    ?assertEqual(ok, io:setopts(standard_io, [binary])),
+    {ok, Data} = file:read(standard_io, 1000),
+    ?assertEqual(eof, file:read(standard_io, 1000)),
+    ?assertEqual(<<"ciao">>, Data),
+    mock_io:teardown({IO, GL}).
+
+% uut_setopt_binary_file_write_test() ->
 %%    {IO, GL} = mock_io:setup(),
 %%    ok = file:write(standard_io, <<"foo1">>),
 %%    ?assertEqual(<<"foo1">>, mock_io:extract(IO)),
