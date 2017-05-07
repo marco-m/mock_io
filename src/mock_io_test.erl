@@ -253,34 +253,22 @@ uut_setopts_binary_file_read_test() ->
     ?assertEqual(eof, file:read(standard_io, 1000)),
     mock_io:teardown({IO, GL}).
 
-%%uut_file_write_test() ->
-%%    {IO, GL} = mock_io:setup(),
-%%    ok = file:write(standard_io, <<"foo1">>),
-%%    ?assertEqual(<<"foo1">>, mock_io:extract(IO)),
-%%    mock_io:teardown({IO, GL}).
+uut_file_write_test() ->
+    {IO, GL} = mock_io:setup(),
+    ok = file:write(standard_io, <<"foo1">>),
+    ?assertEqual(<<"foo1">>, mock_io:extract(IO)),
+    mock_io:teardown({IO, GL}).
 
-%one_file_write_of_binary_then_string_read_test() ->
+mock_supports_multiple_file_write_of_binary_test() ->
+    {IO, GL} = mock_io:setup(),
+    ok = file:write(standard_io, <<"foo2">>),
+    ok = file:write(standard_io, <<"bar">>),
+    ok = file:write(standard_io, <<"baz">>),
+    ?assertEqual(<<"foo2barbaz">>, mock_io:extract(IO)),
+    mock_io:teardown({IO, GL}).
 
-%mix_of_binary_and_string_writes_then_binary_read_test() ->
-
-%mix_of_binary_and_string_writes_then_string_read_test() ->
-
-%%mock_supports_multiple_file_write_of_binary_test() ->
-%%    {IO, GL} = mock_io:setup(),
-%%    ok = file:write(standard_io, <<"foo2">>),
-%%    ok = file:write(standard_io, <<"bar">>),
-%%    ok = file:write(standard_io, <<"baz">>),
-%%    ?assertEqual(<<"foo2barbaz">>, mock_io:extract(IO)),
-%%    mock_io:teardown({IO, GL}).
-%%
-%%mock_supports_io_list_test() ->
-%%    {IO, GL} = mock_io:setup(),
-%%    ok = file:write(standard_io, [<<"foo3">>, <<"bar">>, <<"baz">>]),
-%%    ?assertEqual(<<"foo3barbaz">>, mock_io:extract(IO)),
-%%    mock_io:teardown({IO, GL}).
-
-
-% also get_chars should handle Prompt correctly, although it is bizarre because
-% obviously file_read() doesn't support Prompt...
-% Handle file:read/2, which still uses the old get_chars format
-%io_handle_get_chars(_Prompt, NChars, {Input, Mode}) ->
+mock_supports_io_list_test() ->
+    {IO, GL} = mock_io:setup(),
+    ok = file:write(standard_io, [<<"foo3">>, <<"bar">>, <<"baz">>]),
+    ?assertEqual(<<"foo3barbaz">>, mock_io:extract(IO)),
+    mock_io:teardown({IO, GL}).

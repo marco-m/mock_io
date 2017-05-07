@@ -167,8 +167,8 @@ io_handle_put_chars(Encoding, Mod, Fun, Args, Output) ->
             {ok, <<Output/binary, Output2/binary>>}
     end.
 
-io_handle_put_chars(_Encoding, _Bin, _Output) ->
-    {ok, mock_io_unimplemented}.
+io_handle_put_chars(_Encoding, Bin, Output) ->
+    {ok, <<Output/binary, Bin/binary>>}.
 
 io_handle_get_line(_Encoding, Prompt, {Input, Output, _IsBinary}) ->
     % We are emulating io:get_line(), which reads until newline and returns
