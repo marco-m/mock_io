@@ -13,7 +13,7 @@
 example_capturing_stdout_test() ->
     {IO, GL} = mock_io:setup(),
     uut_that_writes_to_stdout(),
-    ?assertEqual("1 a ciao\n", mock_io:extract(IO)),
+    ?assertEqual(<<"1 a ciao\n">>, mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_that_writes_to_stdout() ->
@@ -22,9 +22,9 @@ uut_that_writes_to_stdout() ->
 example_injecting_to_stdin_test() ->
     {IO, GL} = mock_io:setup(),
     String = "pizza pazza puzza\n",
-    mock_io:inject(IO, String),
+    mock_io:inject(IO, list_to_binary(String)),
     ?assertEqual(String, uut_that_reads_from_stdin()),
-    ?assertEqual("", mock_io:remaining_input(IO)),
+    ?assertEqual(<<>>, mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_that_reads_from_stdin() ->
@@ -52,26 +52,26 @@ mock_io_group_leader_in_setup_works_test_() ->
      fun mock_io:setup/0,
      fun mock_io:teardown/1,
      [
-         fun extract_without_uut_write_returns_empty_string/1,
+         fun extract_without_uut_write_returns_empty/1,
          fun can_access_what_has_been_injected/1,
          fun mock_can_extract_what_uut_has_written_simple/1,
          fun mock_can_extract_what_uut_has_written_multi_args/1
      ]}.
 
-extract_without_uut_write_returns_empty_string({IO, _}) ->
-    ?_assertEqual("", mock_io:extract(IO)).
+extract_without_uut_write_returns_empty({IO, _}) ->
+    ?_assertEqual(<<>>, mock_io:extract(IO)).
 
 can_access_what_has_been_injected({IO, _}) ->
-    ok = mock_io:inject(IO, "hello"),
-    ?_assertEqual("hello", mock_io:remaining_input(IO)).
+    ok = mock_io:inject(IO, <<"hello">>),
+    ?_assertEqual(<<"hello">>, mock_io:remaining_input(IO)).
 
 mock_can_extract_what_uut_has_written_simple({IO, _}) ->
     io:fwrite("pizza"), %  <- this is the UUT
-    ?_assertEqual("pizza", mock_io:extract(IO)).
+    ?_assertEqual(<<"pizza">>, mock_io:extract(IO)).
 
 mock_can_extract_what_uut_has_written_multi_args({IO, _}) ->
     io:fwrite("~p ~p ~s~n", [1, a, "ciao"]),  %  <- this is the UUT
-    ?_assertEqual("1 a ciao\n", mock_io:extract(IO)).
+    ?_assertEqual(<<"1 a ciao\n">>, mock_io:extract(IO)).
 
 
 %------------------------------------------------------------------------------
@@ -91,28 +91,26 @@ mock_can_extract_what_uut_has_written_multi_args({IO, _}) ->
 
 uut_get_line_reads_what_mock_has_injected_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "margherita\n"),
+    ok = mock_io:inject(IO, <<"margherita\n">>),
     ?assertEqual("margherita\n", io:get_line("prompt")), % <- This is the UUT
     mock_io:teardown({IO, GL}).
 
 uut_fread_reads_what_mock_has_injected_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "margherita"),
+    ok = mock_io:inject(IO, <<"margherita">>),
     ?assertEqual({ok, ["margherita"]}, io:fread("prompt", "~s")), % <- This is the UUT
     mock_io:teardown({IO, GL}).
 
 uut_get_line_reads_with_spaces_test() ->
     {IO, GL} = mock_io:setup(),
-    String = "pizza pazza puzza\n",
-    ok = mock_io:inject(IO, String),
-    ?assertEqual(String, io:get_line("prompt")),
-    ?assertEqual("", mock_io:remaining_input(IO)),
+    ok = mock_io:inject(IO, <<"pizza pazza puzza\n">>),
+    ?assertEqual("pizza pazza puzza\n", io:get_line("prompt")),
+    ?assertEqual(<<>>, mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_fread_reads_with_spaces_test() ->
     {IO, GL} = mock_io:setup(),
-    String = "pizza pazza puzza\n",
-    ok = mock_io:inject(IO, String),
+    ok = mock_io:inject(IO, <<"pizza pazza puzza\n">>),
     ?assertEqual({ok, ["pizza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual({ok, ["pazza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual({ok, ["puzza"]}, io:fread("prompt", "~s")), % <- This is the UUT
@@ -120,15 +118,15 @@ uut_fread_reads_with_spaces_test() ->
 
 uut_get_line_reads_with_newlines_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "pizza pazza\npuzza pezza\n"),
+    ok = mock_io:inject(IO, <<"pizza pazza\npuzza pezza\n">>),
     ?assertEqual("pizza pazza\n", io:get_line("prompt")),
     ?assertEqual("puzza pezza\n", io:get_line("prompt")),
-    ?assertEqual("", mock_io:remaining_input(IO)),
+    ?assertEqual(<<>>, mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 
 uut_freads_reads_with_newlines_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "pizza pazza\npuzza\n"),
+    ok = mock_io:inject(IO, <<"pizza pazza\npuzza\n">>),
     ?assertEqual({ok, ["pizza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual({ok, ["pazza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual({ok, ["puzza"]}, io:fread("prompt", "~s")), % <- This is the UUT
@@ -136,14 +134,14 @@ uut_freads_reads_with_newlines_test() ->
 
 uut_get_line_gets_eof_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "pizza pazza\n"),
+    ok = mock_io:inject(IO, <<"pizza pazza\n">>),
     ?assertEqual("pizza pazza\n", io:get_line("prompt")),
     ?assertEqual(eof, io:get_line("prompt")),
     mock_io:teardown({IO, GL}).
 
 uut_fread_gets_eof_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "pizza\n"),
+    ok = mock_io:inject(IO, <<"pizza\n">>),
     ?assertEqual({ok, ["pizza"]}, io:fread("prompt", "~s")), % <- This is the UUT
     ?assertEqual(eof, io:fread("prompt", "~s")), % <- This is the UUT
     mock_io:teardown({IO, GL}).
@@ -153,7 +151,7 @@ uut_fread_gets_eof_test() ->
 % io:fread("", "~d ~d ~d")
 uut_fread_gets_error_when_too_many_args_and_newline_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "1 2\n"),
+    ok = mock_io:inject(IO, <<"1 2\n">>),
     ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
     mock_io:teardown({IO, GL}).
 
@@ -162,7 +160,7 @@ uut_fread_gets_error_when_too_many_args_and_newline_test() ->
 % io:fread("", "~d ~d ~d")
 uut_fread_gets_error_when_only_newline_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "\n"),
+    ok = mock_io:inject(IO, <<"\n">>),
     ?assertEqual({error, {fread, input}}, io:fread("", "~d ~d ~d")), % <- This is the UUT
     mock_io:teardown({IO, GL}).
 
@@ -172,7 +170,7 @@ uut_fread_gets_error_when_only_newline_test() ->
 % X = io:fread("", "~d ~d ~d"),  % <- 2nd, no need to read \n explicitly
 uut_fread_consumes_newline_implicitly_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "2 2 8\n"),
+    ok = mock_io:inject(IO, <<"2 2 8\n">>),
     ?assertEqual({ok, [2, 2, 8]}, io:fread("", "~d ~d ~d")),
     ?assertEqual(eof, io:fread("", "~d ~d ~d")),
     mock_io:teardown({IO, GL}).
@@ -180,17 +178,17 @@ uut_fread_consumes_newline_implicitly_test() ->
 prompt_of_fread_gets_copied_to_mock_output_channel_test() ->
     {IO, GL} = mock_io:setup(),
     % feed something to the UUT simply to make it return.
-    mock_io:inject(IO, "\n"),
+    mock_io:inject(IO, <<"\n">>),
     {ok, _} = io:fread("I am the prompt", "~s"),
-    ?assertEqual("I am the prompt", mock_io:extract(IO)),
+    ?assertEqual(<<"I am the prompt">>, mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
 
 prompt_of_get_line_gets_copied_to_mock_output_channel_test() ->
     {IO, GL} = mock_io:setup(),
     % feed something to the UUT simply to make it return.
-    mock_io:inject(IO, "\n"),
+    mock_io:inject(IO, <<"\n">>),
     "\n" = io:get_line("I am the prompt"),
-    ?assertEqual("I am the prompt", mock_io:extract(IO)),
+    ?assertEqual(<<"I am the prompt">>, mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
 
 io_setopts_returns_error_if_nonlist_existing_test() ->
@@ -247,16 +245,15 @@ default_mode_of_mock_standard_io_is_binary_false_test() ->
     ?assertEqual({binary, false}, proplists:lookup(binary, io:getopts())),
     mock_io:teardown({IO, GL}).
 
-uut_setopt_binary_file_read_test() ->
+uut_setopts_binary_file_read_test() ->
     {IO, GL} = mock_io:setup(),
-    ok = mock_io:inject(IO, "ciao"),
+    ok = mock_io:inject(IO, <<"ciao">>),
     ?assertEqual(ok, io:setopts(standard_io, [binary])),
-    {ok, Data} = file:read(standard_io, 1000),
+    ?assertEqual({ok, <<"ciao">>}, file:read(standard_io, 1000)),
     ?assertEqual(eof, file:read(standard_io, 1000)),
-    ?assertEqual(<<"ciao">>, Data),
     mock_io:teardown({IO, GL}).
 
-% uut_setopt_binary_file_write_test() ->
+%%uut_file_write_test() ->
 %%    {IO, GL} = mock_io:setup(),
 %%    ok = file:write(standard_io, <<"foo1">>),
 %%    ?assertEqual(<<"foo1">>, mock_io:extract(IO)),

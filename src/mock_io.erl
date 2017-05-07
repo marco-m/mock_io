@@ -23,20 +23,20 @@
 % Mock IO API
 %------------------------------------------------------------------------------
 
--spec extract(pid()) -> string().
-extract(Pid) ->
-    {extracted, String} = mock_call(Pid, extract),
-    String.
+-spec extract(pid()) -> binary().
+extract(Pid) when is_pid(Pid) ->
+    {extracted, Bin} = mock_call(Pid, extract),
+    Bin.
 
--spec inject(pid(), string()) -> ok.
-inject(Pid, String) ->
-    injected = mock_call(Pid, {inject, String}),
+-spec inject(pid(), binary()) -> ok.
+inject(Pid, Bin) when is_pid(Pid), is_binary(Bin) ->
+    injected = mock_call(Pid, {inject, Bin}),
     ok.
 
--spec remaining_input(pid()) -> string().
-remaining_input(Pid) ->
-    {remaining_input, String} = mock_call(Pid, remaining_input),
-    String.
+-spec remaining_input(pid()) -> binary().
+remaining_input(Pid) when is_pid(Pid) ->
+    {remaining_input, Bin} = mock_call(Pid, remaining_input),
+    Bin.
 
 %------------------------------------------------------------------------------
 % Process-lifetime API
@@ -47,7 +47,7 @@ start_link() ->
     spawn_link(fun loop/0).
 
 -spec stop(pid()) -> ok.
-stop(Pid) ->
+stop(Pid) when is_pid(Pid) ->
     stopped = mock_call(Pid, stop),
     ok.
 
@@ -63,7 +63,7 @@ setup() ->
     {Pid, GL}.
 
 -spec teardown({pid(), pid()}) -> ok.
-teardown({Pid, GL}) ->
+teardown({Pid, GL}) when is_pid(Pid), is_pid(GL) ->
     true = erlang:group_leader(GL, self()),
     ok = stop(Pid).
 
@@ -72,13 +72,13 @@ teardown({Pid, GL}) ->
 %------------------------------------------------------------------------------
 
 -spec getopts(pid()) -> list().
-getopts(Pid) ->
+getopts(Pid) when is_pid(Pid) ->
     {getopts, Opts} = mock_call(Pid, getopts),
     Opts.
 
 %------------------------------------------------------------------------------
 
-loop() -> loop([], [], false).
+loop() -> loop(<<>>, <<>>, false).
 
 loop(Input, Output, IsBinary) ->
     receive
@@ -95,9 +95,9 @@ loop(Input, Output, IsBinary) ->
 
 handle_mock_protocol(From, Args, {Input, Output, IsBinary}) ->
     case Args of
-        {inject, String} ->
+        {inject, Bin} ->
             mock_reply(From, injected),
-            {Input ++ String, Output, IsBinary};
+            {<<Input/binary, Bin/binary>>, Output, IsBinary};
         remaining_input ->
             mock_reply(From, {remaining_input, Input}),
             {Input, Output, IsBinary};
@@ -115,16 +115,17 @@ handle_mock_protocol(From, Args, {Input, Output, IsBinary}) ->
     end.
 
 handle_io_protocol(From, Opaque, Req, {Input, Output, IsBinary}) ->
-    %%        {io_request, From, Opaque,
-    %%         {put_chars,latin1, Bin}} when is_binary(Bin) ->
-    %%            reply(io_reply, From, Opaque, ok),
-    %%            loop(Input, Output ++ lists:flatten(io_lib:format(Format, Data)), IsBinary);
 
     case Req of
 
         {put_chars, Encoding, Mod, Fun, Args} ->
             {Reply, Output2} =
-                io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, IsBinary}),
+                io_handle_put_chars(Encoding, Mod, Fun, Args, Output),
+            io_reply(From, Opaque, Reply),
+            {Input, Output2, IsBinary};
+
+        {put_chars, Encoding, Bin} ->
+            {Reply, Output2} = io_handle_put_chars(Encoding, Bin, Output),
             io_reply(From, Opaque, Reply),
             {Input, Output2, IsBinary};
 
@@ -159,11 +160,15 @@ handle_io_protocol(From, Opaque, Req, {Input, Output, IsBinary}) ->
             erlang:error({unexpected, Any})
     end.
 
-io_handle_put_chars(Encoding, Mod, Fun, Args, {Output, _IsBinary}) ->
+io_handle_put_chars(Encoding, Mod, Fun, Args, Output) ->
     case {Encoding, Mod, Fun, Args} of
         {unicode, io_lib, format, [Format, Data]} ->
-            {ok, Output ++ lists:flatten(io_lib:format(Format, Data))}
+            Output2 = list_to_binary(io_lib:format(Format, Data)),
+            {ok, <<Output/binary, Output2/binary>>}
     end.
+
+io_handle_put_chars(_Encoding, _Bin, _Output) ->
+    {ok, mock_io_unimplemented}.
 
 io_handle_get_line(_Encoding, Prompt, {Input, Output, _IsBinary}) ->
     % We are emulating io:get_line(), which reads until newline and returns
@@ -171,50 +176,51 @@ io_handle_get_line(_Encoding, Prompt, {Input, Output, _IsBinary}) ->
     % of newline.
     {Reply, RestInput} =
         case Input of
-            "" -> {eof, ""};
+            <<>> -> {eof, <<>>};
             Input ->
-                Options = [{return, list}, {parts, 2}],
-                [Data, Leftover] = re:split(Input, "\n", Options),
-                {Data ++ "\n", Leftover}
+                [Data, Leftover] = re:split(Input, "\n", [{parts, 2}]),
+                {binary_to_list(Data) ++ "\n", Leftover}
         end,
-    {Reply, RestInput, Output ++ Prompt}.
+    BinPrompt = list_to_binary(Prompt),
+    {Reply, RestInput, <<Output/binary, BinPrompt/binary>>}.
 
 io_handle_get_until(_Encoding, Prompt, _Mod = io_lib, _Fun = fread, _Args = [Format],
                     {Input, Output, _IsBinary}) ->
     {Reply, RestInput} =
         case Input of
-            "" -> {eof, ""};
+            <<>> -> {eof, <<>>};
             Input ->
-                case io_lib:fread(Format, Input) of
+                case io_lib:fread(Format, binary_to_list(Input)) of
                     {more, _RestFormat, _Nchars, InputStack} ->
-                        {{error, {fread, input}}, InputStack};
+                        {{error, {fread, input}}, list_to_binary(InputStack)};
                     {error, _Reason} ->
                         {{error, {fread, input}}, Input};
                     {ok, Data, Rest} ->
                         case Rest of
-                            "\n" -> {{ok, Data}, ""};
-                            Rest -> {{ok, Data}, Rest}
+                            "\n" -> {{ok, Data}, <<>>};
+                            Rest -> {{ok, Data}, list_to_binary(Rest)}
                         end
                 end
         end,
-    {Reply, RestInput, Output ++ Prompt}.
+    BinPrompt = list_to_binary(Prompt),
+    {Reply, RestInput, <<Output/binary,  BinPrompt/binary>>}.
 
 % Handle file:read/2, which still uses the old get_chars format
 io_handle_get_chars(_Prompt, NChars, {Input, IsBinary}) ->
     {Reply, RestInput} =
         case Input of
-            "" -> {eof, ""};
+            <<>> -> {eof, <<>>};
             Input ->
                 {Data, Rest} =
-                    % TODO instead of length + split, write our own split that
-                    % doesn't error if N > length!
-                    case length(Input) > NChars of
-                        true -> lists:split(NChars, Input);
-                        false -> {Input, ""}
+                    case byte_size(Input) > NChars of
+                        true ->
+                            <<A:NChars/binary, R/binary>> = Input,
+                            {A, R};
+                        false -> {Input, <<>>}
                     end,
                 case IsBinary of
-                    true -> {{ok, list_to_binary(Data)}, Rest};
-                    false -> {{ok, Data}, Rest}
+                    true -> {{ok, Data}, Rest};
+                    false -> {{ok, binary_to_list(Data)}, Rest}
                 end
         end,
     {Reply, RestInput}.
@@ -232,7 +238,6 @@ io_handle_setopts(Args, IsBinary) when is_list(Args) ->
         Args -> {{error, enotsup}, IsBinary}
     end;
 io_handle_setopts(_, IsBinary) -> {{error, request}, IsBinary}.
-
 
 
 %------------------------------------------------------------------------------
