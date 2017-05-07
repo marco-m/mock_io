@@ -2,7 +2,7 @@
 
 Version 0.1
 
-A system that mocks the Erlang I/O protocol, to allow unit testing code that performs I/O (`io:fwrite`, `io:fread`, `file:read`, `file:write`, ...).
+A simple mock of the Erlang I/O protocol, to allow unit testing code that performs I/O operations (`io:fwrite`, `io:fread`, `file:read`, `file:write`, ...).
 
 By default, it mocks the `standard_io` device by manipulating the group leader, but you can mock any device/file.
 
@@ -33,7 +33,7 @@ EUnit test:
 capture_stdout_test() ->
     {IO, GL} = mock_io:setup(),
     uut:write_to_stdout(),
-    ?assertEqual("1 a ciao\n", mock_io:extract(IO)),
+    ?assertEqual(<<"1 a ciao\n">>, mock_io:extract(IO)),
     mock_io:teardown({IO, GL}).
 ```
 
@@ -52,10 +52,9 @@ EUnit test:
 ```erlang
 inject_to_stdin_test() ->
     {IO, GL} = mock_io:setup(),
-    String = "pizza pazza puzza\n",
-    mock_io:inject(IO, String),
-    ?assertEqual(String, uut:read_from_stdin()),
-    ?assertEqual("", mock_io:remaining_input(IO)),
+    mock_io:inject(IO, <<"pizza pazza puzza\n">>),
+    ?assertEqual("pizza pazza puzza\n", uut:read_from_stdin()),
+    ?assertEqual(<<>>, mock_io:remaining_input(IO)),
     mock_io:teardown({IO, GL}).
 ```
 
