@@ -23,49 +23,82 @@
 % Mock IO API
 %------------------------------------------------------------------------------
 
--spec extract(pid()) -> binary().
-extract(Pid) when is_pid(Pid) ->
-    {extracted, Bin} = mock_call(Pid, extract),
+%
+% Extract everything that has been written by the UUT to the output channel
+% captured by the mock `IO` and return it as `Bin`.
+%
+-spec extract(IO :: pid()) -> Bin :: binary().
+extract(IO) when is_pid(IO) ->
+    {extracted, Bin} = mock_call(IO, extract),
     Bin.
 
--spec inject(pid(), binary()) -> ok.
-inject(Pid, Bin) when is_pid(Pid), is_binary(Bin) ->
-    injected = mock_call(Pid, {inject, Bin}),
+%
+% Inject `Bin` into the input channel that is mocked for UUT by mock `IO`.
+%
+-spec inject(IO :: pid(), Bin :: binary()) -> ok.
+inject(IO, Bin) when is_pid(IO), is_binary(Bin) ->
+    injected = mock_call(IO, {inject, Bin}),
     ok.
 
--spec remaining_input(pid()) -> binary().
-remaining_input(Pid) when is_pid(Pid) ->
-    {remaining_input, Bin} = mock_call(Pid, remaining_input),
+%
+% Return a copy of what is still available in the input channel of mock `IO`.
+%
+-spec remaining_input(IO :: pid()) -> binary().
+remaining_input(IO) when is_pid(IO) ->
+    {remaining_input, Bin} = mock_call(IO, remaining_input),
     Bin.
 
 %------------------------------------------------------------------------------
 % Process-lifetime API
 %------------------------------------------------------------------------------
 
--spec start_link() -> pid().
+%
+% Start-link a new `mock_io` and return its pid `IO`. If used as-is (as
+% opposed to call `setup/1`), you must pass `IO` to the UUT (dependency
+% injection). Often this is not the right function to use; use `setup/0`
+% instead.
+%
+-spec start_link() -> IO :: pid().
 start_link() ->
     spawn_link(fun loop/0).
 
--spec stop(pid()) -> ok.
-stop(Pid) when is_pid(Pid) ->
-    stopped = mock_call(Pid, stop),
+%
+% Stop synchronously mock_io `IO`. Use this function only if you called
+% `start_link/0` directly.
+%
+-spec stop(IO :: pid()) -> ok.
+stop(IO) when is_pid(IO) ->
+    stopped = mock_call(IO, stop),
     ok.
 
 %------------------------------------------------------------------------------
 % Helper functions API
 %------------------------------------------------------------------------------
 
--spec setup() -> {pid(), pid()}.
+%
+% Start-link a new `mock_io` and replace the current group leader. This allows
+% to intercept all I/O done by the UUT either implicitly (e.g.
+% `io:fwrite(Fmt, Args)`) or by using the default IO server `standard_io`
+% (e.g. `io:fwrite(standard_io, Fmt, Args)`).
+% Return tuple `{IO, GL}` containing the mock_io `IO` and the old group leader
+% `GL`. Normally you can treat `GL` as opaque. When done with the test, you
+% have to call `teardown/2`.
+%
+-spec setup() -> {IO :: pid(), GL :: pid()}.
 setup() ->
     GL = erlang:group_leader(),
-    Pid = start_link(),
-    true = erlang:group_leader(Pid, self()),
-    {Pid, GL}.
+    IO = start_link(),
+    true = erlang:group_leader(IO, self()),
+    {IO, GL}.
 
--spec teardown({pid(), pid()}) -> ok.
-teardown({Pid, GL}) when is_pid(Pid), is_pid(GL) ->
+%
+% Stop synchronously mock_io `IO` and reset the current group leader to `GL`,
+% the one we found when starting the test.
+%
+-spec teardown({IO :: pid(), GL :: pid()}) -> ok.
+teardown({IO, GL}) when is_pid(IO), is_pid(GL) ->
     true = erlang:group_leader(GL, self()),
-    ok = stop(Pid).
+    ok = stop(IO).
 
 %------------------------------------------------------------------------------
 % Low-level test the mock itself API
