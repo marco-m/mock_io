@@ -72,7 +72,7 @@ See also the first tests in `mock_io_test.erl` that show how to use `mock_io` fr
 
 Uses semantic versioning.
 
-### Design
+### Data flows
 
 ![flows of mock_io](priv/mock_io.png)
 
