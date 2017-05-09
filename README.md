@@ -74,6 +74,8 @@ Uses semantic versioning.
 
 ### Design
 
+![flows of mock_io](priv/mock_io.png)
+
 ### API calls
 
 ```erlang
