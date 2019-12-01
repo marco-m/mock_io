@@ -12,7 +12,7 @@ Focuses on simplicity and allowing painless mocking of I/O, not on performance.
 
 Usable, but still beta code. Missing functionalities and API might change without attempting to maintain backward compatibility as long as the version is 0.x.
 
-PRs are welcome! Please explain the use case, focus on simplicity and provide full test coverage.
+Please, before proposing a PR, open a ticket to discuss the use case. Once agreed upon, please focus on simplicity and provide full test coverage.
 
 ## Usage examples
 
